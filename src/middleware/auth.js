@@ -37,11 +37,14 @@ export const authMiddleware = async (req, res, next) => {
     const isAdminRoute = originalUrl.startsWith('/api/admin');
 
     if (!isAdminRoute) {
-      const blocked = await VectorBlockedIp.findOne({ ip: currentIp });
-      if (blocked) {
-        return res
-          .status(401)
-          .json({ logout: true, message: 'Access from this IP is blocked' });
+      const enableIpSecurity = process.env.ENABLE_IP_SECURITY === 'true';
+      if (enableIpSecurity) {
+        const blocked = await VectorBlockedIp.findOne({ ip: currentIp });
+        if (blocked) {
+          return res
+            .status(401)
+            .json({ logout: true, message: 'Access from this IP is blocked' });
+        }
       }
     }
 
@@ -55,12 +58,15 @@ export const authMiddleware = async (req, res, next) => {
         .json({ logout: true, message: 'Session expired or invalid' });
     }
 
-    const sessionIp = normalizeIp(session.ip);
-    if (!isAdminRoute && sessionIp !== currentIp) {
-      await VectorSession.deleteOne({ _id: session._id });
-      return res
-        .status(401)
-        .json({ logout: true, message: 'Session IP mismatch' });
+    const enableIpSecurity = process.env.ENABLE_IP_SECURITY === 'true';
+    if (enableIpSecurity) {
+      const sessionIp = normalizeIp(session.ip);
+      if (!isAdminRoute && sessionIp !== currentIp) {
+        await VectorSession.deleteOne({ _id: session._id });
+        return res
+          .status(401)
+          .json({ logout: true, message: 'Session IP mismatch' });
+      }
     }
 
     const user = await VectorUser.findById(payload.userId);
