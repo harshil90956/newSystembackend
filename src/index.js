@@ -8,7 +8,6 @@ import authRoutes from './routes/auth.js';
 import adminRoutes from './routes/admin.js';
 import adminUsersRoutes from './routes/adminUsers.js';
 import docsRoutes from './routes/docs.js';
-import securityRoutes from './routes/security.js';
 import vectorRoutes from './routes/vectorRoutes.js';
 import vectorJobRoutes from './routes/vectorJobRoutes.js';
 import printRoutes from './routes/printRoutes.js';
@@ -52,6 +51,12 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
+app.use((req, res, next) => {
+  const version = process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_COMMIT_SHA || 'unknown';
+  res.setHeader('X-Backend-Version', version);
+  return next();
+});
+
 /* ------------------------------ body parsers ------------------------------ */
 
 app.use(express.json({ limit: BODY_LIMIT }));
@@ -63,7 +68,6 @@ app.use(express.urlencoded({ extended: true, limit: BODY_LIMIT }));
 /* -------------------------------- routes --------------------------------- */
 
 app.use('/api/auth', authRoutes);
-app.use('/api/security', securityRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/admin', adminUsersRoutes);
 app.use('/api/docs', docsRoutes);
@@ -82,6 +86,7 @@ app.get('/api/health', (req, res) => {
 
   res.json({
     status: 'ok',
+    backendVersion: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_COMMIT_SHA || 'unknown',
     workersEnabled: envBool('ENABLE_WORKERS', false),
     ipSecurityEnabled: false,
     redisAvailable: Boolean(flowProducer),
