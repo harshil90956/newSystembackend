@@ -4,7 +4,7 @@
   "main": "src/index.js",
   "type": "module",
   "scripts": {
-    "start": "set PRINT_DEBUG=1&& node src/index.js",
+    "start": "node src/index.js",
     "dev": "nodemon src/index.js",
     "worker": "node workers/vectorWorker.js"
   },
