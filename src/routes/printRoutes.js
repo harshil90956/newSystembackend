@@ -1,6 +1,8 @@
 import express from 'express';
 import crypto from 'crypto';
 import mongoose from 'mongoose';
+import { GetObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 import { authMiddleware } from '../middleware/auth.js';
 import VectorDocumentAccess from '../vectorModels/VectorDocumentAccess.js';
@@ -10,7 +12,7 @@ import VectorPrintLog from '../vectorModels/VectorPrintLog.js';
 
 import { assertAndConsumePrintQuota } from '../services/printQuotaService.js';
 import { resolveFinalPdfKeyForServe } from '../services/finalPdfExportService.js';
-import { downloadFromS3, deleteFromS3 } from '../services/s3.js';
+import { downloadFromS3, deleteFromS3, s3 } from '../services/s3.js';
 
 const router = express.Router();
 
@@ -30,6 +32,71 @@ const computeRemaining = (access) => {
   );
   return { maxPrints: quota, remainingPrints: Math.max(0, quota - used) };
 };
+
+router.get('/print-agent/download', async (req, res) => {
+  try {
+    const bucket = typeof process.env.AWS_S3_BUCKET === 'string' ? process.env.AWS_S3_BUCKET.trim() : '';
+    if (!bucket) {
+      return res.status(500).json({ message: 'S3 not configured' });
+    }
+
+    const installerKey =
+      typeof process.env.PRINT_AGENT_S3_KEY === 'string' && process.env.PRINT_AGENT_S3_KEY.trim().length > 0
+        ? process.env.PRINT_AGENT_S3_KEY.trim()
+        : 'securepdf/print-agent/SecurePrintHub-Setup-1.0.0.exe';
+
+    const filenameRaw =
+      typeof process.env.PRINT_AGENT_FILENAME === 'string' && process.env.PRINT_AGENT_FILENAME.trim().length > 0
+        ? process.env.PRINT_AGENT_FILENAME.trim()
+        : 'SecurePrintHub-Setup-1.0.0.exe';
+
+    const filename = filenameRaw.replace(/[\\/\n\r\t"]/g, '_');
+
+    let head;
+    try {
+      head = await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: installerKey }));
+    } catch (err) {
+      const statusCode = err?.$metadata?.httpStatusCode;
+      const errName = err?.name;
+      if (statusCode === 404 || errName === 'NotFound' || errName === 'NoSuchKey') {
+        return res.status(404).json({
+          message: 'Print agent installer not found. Please upload it to S3 and set PRINT_AGENT_S3_KEY correctly.',
+        });
+      }
+      throw err;
+    }
+
+    const size = Number(head?.ContentLength ?? 0);
+    if (!Number.isFinite(size) || size < 1024 * 1024) {
+      return res.status(500).json({
+        message: 'Print agent installer is missing or corrupted. Please re-upload a valid installer build.',
+      });
+    }
+
+    const command = new GetObjectCommand({
+      Bucket: bucket,
+      Key: installerKey,
+      ResponseContentDisposition: `attachment; filename="${filename}"`,
+      ResponseContentType: 'application/octet-stream',
+    });
+
+    const signedUrl = await getSignedUrl(s3, command, { expiresIn: 60 * 5 });
+
+    const accept = String(req.headers.accept || '').toLowerCase();
+    const wantsJson =
+      (typeof req.query?.format === 'string' && req.query.format.toLowerCase() === 'json') ||
+      accept.includes('application/json');
+
+    if (wantsJson) {
+      return res.json({ url: signedUrl, filename, size });
+    }
+
+    return res.redirect(signedUrl);
+  } catch (err) {
+    console.error('Print agent download error', err);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+});
 
 router.post('/print/fetch', authMiddleware, async (req, res) => {
   try {
