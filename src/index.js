@@ -121,7 +121,7 @@ async function ensureAdminUser() {
 /* -------------------------------- start ---------------------------------- */
 
 async function start() {
-  const server = app.listen(PORT, () => {
+  const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`Backend listening on port ${PORT}`);
   });
 
