@@ -1,15 +1,6 @@
 import jwt from 'jsonwebtoken';
 import VectorUser from '../vectorModels/VectorUser.js';
 import VectorSession from '../vectorModels/VectorSession.js';
-import VectorBlockedIp from '../vectorModels/VectorBlockedIp.js';
-
-const normalizeIp = (value) => {
-  const raw = (value || '').toString().trim();
-  const first = raw.includes(',') ? raw.split(',')[0].trim() : raw;
-  const v4mapped = first.startsWith('::ffff:') ? first.slice(7) : first;
-  if (v4mapped === '::1') return '127.0.0.1';
-  return v4mapped;
-};
 
 export const authMiddleware = async (req, res, next) => {
   try {
@@ -25,28 +16,7 @@ export const authMiddleware = async (req, res, next) => {
       return res.status(500).json({ message: 'Auth not configured' });
     }
 
-    const currentIp = normalizeIp(
-      req.headers['x-forwarded-for'] ||
-        req.ip ||
-        (req.connection && req.connection.remoteAddress) ||
-        ''
-    );
-
     const originalUrl = req.originalUrl || req.url || '';
-
-    const isAdminRoute = originalUrl.startsWith('/api/admin');
-
-    if (!isAdminRoute) {
-      const enableIpSecurity = process.env.ENABLE_IP_SECURITY === 'true';
-      if (enableIpSecurity) {
-        const blocked = await VectorBlockedIp.findOne({ ip: currentIp });
-        if (blocked) {
-          return res
-            .status(401)
-            .json({ logout: true, message: 'Access from this IP is blocked' });
-        }
-      }
-    }
 
     const payload = jwt.verify(token, jwtSecret);
 
@@ -56,17 +26,6 @@ export const authMiddleware = async (req, res, next) => {
       return res
         .status(401)
         .json({ logout: true, message: 'Session expired or invalid' });
-    }
-
-    const enableIpSecurity = process.env.ENABLE_IP_SECURITY === 'true';
-    if (enableIpSecurity) {
-      const sessionIp = normalizeIp(session.ip);
-      if (!isAdminRoute && sessionIp !== currentIp) {
-        await VectorSession.deleteOne({ _id: session._id });
-        return res
-          .status(401)
-          .json({ logout: true, message: 'Session IP mismatch' });
-      }
     }
 
     const user = await VectorUser.findById(payload.userId);

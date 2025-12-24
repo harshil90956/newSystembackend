@@ -13,7 +13,6 @@ import vectorRoutes from './routes/vectorRoutes.js';
 import vectorJobRoutes from './routes/vectorJobRoutes.js';
 import printRoutes from './routes/printRoutes.js';
 import downloadRoutes from './routes/downloadRoutes.js';
-import { checkLoginAttempts } from './middleware/ipSecurity.js';
 import { startVectorPdfWorkers } from './workers/vectorPdfWorker.js';
 import { startJobCleanupLoop } from './services/jobCleanup.js';
 import { getVectorFlowProducer } from './workers/vectorPdfWorker.js';
@@ -60,10 +59,6 @@ app.use(express.urlencoded({ extended: true, limit: BODY_LIMIT }));
 
 /* ------------------------------ security ---------------------------------- */
 
-const enableIpSecurity = process.env.ENABLE_IP_SECURITY === 'true';
-if (enableIpSecurity) {
-  app.use(checkLoginAttempts);
-}
 
 /* -------------------------------- routes --------------------------------- */
 
